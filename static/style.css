@@ -2886,6 +2886,7 @@ main.main.showing-logs > #mainLogs{display:flex;}
 
 /* Sidebar tab visibility — hide nav-tab and matching rail-btn when toggled off by user */
 .nav-tab-hidden{display:none!important;}
+.nav-tab-permission-hidden,.side-menu-item-permission-hidden{display:none!important;}
 
 /* Tab visibility chips in Settings > Appearance */
 .tab-visibility-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}

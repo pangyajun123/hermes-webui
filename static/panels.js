@@ -203,6 +203,13 @@ function _resyncChatSidebarAfterPanelSwitch() {
 async function switchPanel(name, opts = {}) {
   const nextPanel = name || 'chat';
   const prevPanel = _currentPanel;
+  if (typeof _isPanelAllowed === 'function' && !_isPanelAllowed(nextPanel)) {
+    const fallback = (typeof _firstAllowedPanel === 'function') ? _firstAllowedPanel() : null;
+    if (fallback && fallback !== nextPanel) {
+      return switchPanel(fallback, {...opts, fromRailClick:false, bypassSettingsGuard:true});
+    }
+    return false;
+  }
   // ── Desktop sidebar collapse toggle (rail-click only) ──
   // If the click came from a rail icon AND we're on desktop, the rail icon
   // does double duty: clicking the already-active panel collapses the sidebar;
@@ -5541,6 +5548,68 @@ let _settingsPreferencesAutosaveRetryPayload = null;
 // ── Sidebar tab visibility ─────────────────────────────────────────────────
 const _ALWAYS_VISIBLE_TABS = new Set(['chat','settings']);
 const _HIDDEN_TABS_LS_KEY = 'hermes-webui-hidden-tabs';
+const _MENU_PERMISSION_PANEL_IDS = ['chat','tasks','kanban','skills','memory','workspaces','profiles','todos','insights','logs','settings','dashboard'];
+const _MENU_PERMISSION_SETTINGS_SECTIONS = ['conversation','appearance','preferences','providers','plugins','system'];
+let _menuPermissions = (window.__HERMES_CONFIG__ && window.__HERMES_CONFIG__.menuPermissions) || null;
+
+function _menuPermissionsActive(){
+  return !!(_menuPermissions && _menuPermissions.enabled);
+}
+
+function _menuPermissionList(name){
+  const list = _menuPermissions && _menuPermissions[name];
+  return Array.isArray(list) ? list : [];
+}
+
+function _isPanelAllowed(panel){
+  if(!_menuPermissionsActive()) return true;
+  return _menuPermissionList('allowed_panels').indexOf(panel) !== -1;
+}
+
+function _isSettingsSectionAllowed(section){
+  if(!_menuPermissionsActive()) return true;
+  return _menuPermissionList('allowed_settings_sections').indexOf(section) !== -1;
+}
+
+function _firstAllowedPanel(){
+  if(!_menuPermissionsActive()) return 'chat';
+  return _MENU_PERMISSION_PANEL_IDS.find(id => id !== 'dashboard' && _isPanelAllowed(id)) || null;
+}
+
+function _firstAllowedSettingsSection(){
+  if(!_menuPermissionsActive()) return 'conversation';
+  return _MENU_PERMISSION_SETTINGS_SECTIONS.find(id => _isSettingsSectionAllowed(id)) || null;
+}
+
+function _isNavTabSuppressed(el){
+  return !!(el && (el.classList.contains('nav-tab-hidden') || el.classList.contains('nav-tab-permission-hidden')));
+}
+
+function _applyMenuPermissions(perms){
+  if(perms !== undefined) _menuPermissions = perms || null;
+  const active = _menuPermissionsActive();
+  document.documentElement.dataset.menuPermissions = active ? 'enabled' : 'disabled';
+  document.querySelectorAll('[data-panel]').forEach(function(el){
+    const panel = el.dataset.panel;
+    if(!panel) return;
+    el.classList.toggle('nav-tab-permission-hidden', active && !_isPanelAllowed(panel));
+  });
+  document.querySelectorAll('[data-dashboard-link]').forEach(function(el){
+    el.classList.toggle('nav-tab-permission-hidden', active && !_isPanelAllowed('dashboard'));
+  });
+  document.querySelectorAll('#settingsMenu .side-menu-item[data-settings-section]').forEach(function(el){
+    const section = el.dataset.settingsSection;
+    el.classList.toggle('side-menu-item-permission-hidden', active && !_isSettingsSectionAllowed(section));
+  });
+  if(_currentPanel && !_isPanelAllowed(_currentPanel)){
+    const fallback = _firstAllowedPanel();
+    if(fallback && fallback !== _currentPanel && typeof switchPanel === 'function') switchPanel(fallback, {bypassSettingsGuard:true});
+  }
+  if(_currentPanel === 'settings' && !_isSettingsSectionAllowed(_currentSettingsSection)){
+    const fallbackSection = _firstAllowedSettingsSection();
+    if(fallbackSection) switchSettingsSection(fallbackSection);
+  }
+}
 
 function _getHiddenTabs(){
   try{var h=localStorage.getItem(_HIDDEN_TABS_LS_KEY);if(h){var p=JSON.parse(h);if(Array.isArray(p))return p;}}catch(e){}
@@ -5566,8 +5635,9 @@ function _applyTabVisibility(hidden){
   var activeRail=document.querySelector('.rail .rail-btn.nav-tab.active[data-panel]');
   var activeSidebar=document.querySelector('.sidebar-nav .nav-tab.active[data-panel]');
   var activeEl=activeRail||activeSidebar;
-  if(activeEl&&activeEl.classList.contains('nav-tab-hidden')){
-    if(typeof switchPanel==='function') switchPanel('chat');
+  if(activeEl&&_isNavTabSuppressed(activeEl)){
+    const fallback = (typeof _firstAllowedPanel === 'function' && _firstAllowedPanel()) || 'chat';
+    if(typeof switchPanel==='function') switchPanel(fallback);
   }
 }
 
@@ -5582,6 +5652,7 @@ function _renderTabVisibilityChips(){
     var panel=tab.dataset.panel;
     if(!panel||_ALWAYS_VISIBLE_TABS.has(panel))return;
     if(tab.classList.contains('dashboard-link'))return;
+    if(tab.classList.contains('nav-tab-permission-hidden'))return;
     var label=tab.dataset.tooltip||tab.dataset.label||panel;
     // Capitalize first letter
     label=label.charAt(0).toUpperCase()+label.slice(1);
@@ -5619,7 +5690,12 @@ function _toggleTabVisibilityChip(panel){
 }
 
 function switchSettingsSection(name){
-  const section=(name==='appearance'||name==='preferences'||name==='providers'||name==='plugins'||name==='system')?name:'conversation';
+  let section=(name==='appearance'||name==='preferences'||name==='providers'||name==='plugins'||name==='system')?name:'conversation';
+  if(!_isSettingsSectionAllowed(section)){
+    const fallback=_firstAllowedSettingsSection();
+    if(!fallback)return false;
+    section=fallback;
+  }
   _settingsSection=section;
   _currentSettingsSection=section;
   const map={conversation:'Conversation',appearance:'Appearance',preferences:'Preferences',providers:'Providers',plugins:'Plugins',system:'System'};
@@ -6023,6 +6099,7 @@ async function loadSettingsPanel(){
     }
     _setHiddenTabs(hiddenTabs);
     _applyTabVisibility(hiddenTabs);
+    _applyMenuPermissions();
     _renderTabVisibilityChips();
     const resolvedLanguage=(typeof resolvePreferredLocale==='function')
       ? resolvePreferredLocale(settings.language, localStorage.getItem('hermes-lang'))

@@ -28,7 +28,8 @@
 <script>(function(){try{if(localStorage.getItem('hermes-webui-sidebar-collapsed')==='1')document.documentElement.dataset.sidebarCollapsed='1';}catch(e){}})()</script>
 <link rel="preload" href="static/pwa-startup.js?v=__WEBUI_VERSION__" as="script">
 <script src="static/pwa-startup.js?v=__WEBUI_VERSION__"></script>
-<script>window.__HERMES_CONFIG__={maxUploadBytes:__MAX_UPLOAD_BYTES__,csrfToken:__CSRF_TOKEN_JSON__};</script>
+<script>window.__HERMES_CONFIG__={maxUploadBytes:__MAX_UPLOAD_BYTES__,csrfToken:__CSRF_TOKEN_JSON__,menuPermissions:__MENU_PERMISSIONS_JSON__,menuTokenParam:__MENU_TOKEN_PARAM_JSON__};</script>
+<script>(function(){try{var cfg=window.__HERMES_CONFIG__||{},mp=cfg.menuPermissions;if(!mp||!mp.enabled||!history.replaceState)return;var u=new URL(location.href),names=[cfg.menuTokenParam||'token','access_token','auth_token'],changed=false;names.forEach(function(n){if(n&&u.searchParams.has(n)){u.searchParams.delete(n);changed=true;}});if(changed)history.replaceState(history.state,'',u.pathname+u.search+u.hash);}catch(_){}})()</script>
 <script>(function(){
   var cfg=window.__HERMES_CONFIG__||{},token=cfg.csrfToken||'';
   if(!token||!window.fetch)return;
@@ -184,7 +185,8 @@
          before any paint. Mirrors the theme/skin/font-size inline scripts in <head>.
          The boot.js _restoreTabVisibility IIFE is a secondary fallback that also
          handles the active-tab switch. -->
-    <script>(function(){try{var h=localStorage.getItem('hermes-webui-hidden-tabs');if(!h)return;var p=JSON.parse(h);if(!Array.isArray(p))return;var a=new Set(['chat','settings']);p.forEach(function(id){if(a.has(id))return;document.querySelectorAll('[data-panel="'+id+'"]').forEach(function(el){el.classList.add('nav-tab-hidden');});});try{var ac=document.querySelector('.rail .rail-btn.nav-tab.active[data-panel]')||document.querySelector('.sidebar-nav .nav-tab.active[data-panel]');if(ac&&ac.classList.contains('nav-tab-hidden')){ac.classList.remove('active');var c=document.querySelector('.rail .rail-btn.nav-tab[data-panel="chat"]')||document.querySelector('.sidebar-nav .nav-tab[data-panel="chat"]');if(c)c.classList.add('active');}}catch(_){}}catch(e){}})();</script>
+    <script>(function(){try{var mp=(window.__HERMES_CONFIG__||{}).menuPermissions;if(mp&&mp.enabled){var ap=Array.isArray(mp.allowed_panels)?mp.allowed_panels:[];document.querySelectorAll('[data-panel]').forEach(function(el){var id=el.getAttribute('data-panel');if(id&&ap.indexOf(id)===-1)el.classList.add('nav-tab-permission-hidden');});document.querySelectorAll('[data-dashboard-link]').forEach(function(el){if(ap.indexOf('dashboard')===-1)el.classList.add('nav-tab-permission-hidden');});}}catch(_){}
+try{var h=localStorage.getItem('hermes-webui-hidden-tabs');if(h){var p=JSON.parse(h);if(Array.isArray(p)){var a=new Set(['chat','settings']);p.forEach(function(id){if(a.has(id))return;document.querySelectorAll('[data-panel="'+id+'"]').forEach(function(el){el.classList.add('nav-tab-hidden');});});}}try{var ac=document.querySelector('.rail .rail-btn.nav-tab.active[data-panel]')||document.querySelector('.sidebar-nav .nav-tab.active[data-panel]');if(ac&&(ac.classList.contains('nav-tab-hidden')||ac.classList.contains('nav-tab-permission-hidden'))){ac.classList.remove('active');var c=document.querySelector('.rail .rail-btn.nav-tab[data-panel="chat"]:not(.nav-tab-permission-hidden)')||document.querySelector('.sidebar-nav .nav-tab[data-panel="chat"]:not(.nav-tab-permission-hidden)')||document.querySelector('.rail .rail-btn.nav-tab[data-panel]:not(.nav-tab-permission-hidden)')||document.querySelector('.sidebar-nav .nav-tab[data-panel]:not(.nav-tab-permission-hidden)');if(c)c.classList.add('active');}}catch(_){}}catch(e){}})();</script>
     <!-- Chat panel -->
     <div class="panel-view active" id="panelChat">
       <div class="panel-head">

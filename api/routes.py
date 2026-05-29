@@ -3730,16 +3730,28 @@ def handle_get(handler, parsed) -> bool:
             except Exception:
                 csrf_token = ""
 
+            try:
+                from api.menu_permissions import resolve_menu_permissions_for_request
+
+                menu_permissions, menu_permission_headers = resolve_menu_permissions_for_request(handler, parsed)
+            except Exception as exc:
+                logger.warning("Failed to resolve menu permissions for shell: %s", exc)
+                menu_permissions = {"enabled": False, "allowed_panels": [], "allowed_settings_sections": []}
+                menu_permission_headers = {}
+
             html = (
                 _INDEX_HTML_PATH.read_text(encoding="utf-8")
                 .replace("__WEBUI_VERSION__", version_token)
                 .replace("__MAX_UPLOAD_BYTES__", str(MAX_UPLOAD_BYTES))
                 .replace("__CSRF_TOKEN_JSON__", json.dumps(csrf_token))
+                .replace("__MENU_PERMISSIONS_JSON__", json.dumps(menu_permissions, ensure_ascii=False))
+                .replace("__MENU_TOKEN_PARAM_JSON__", json.dumps(os.getenv("HERMES_WEBUI_MENU_TOKEN_PARAM", "token").strip() or "token"))
             )
             return t(
                 handler,
                 inject_extension_tags(html),
                 content_type="text/html; charset=utf-8",
+                extra_headers=menu_permission_headers,
             )
         except Exception as exc:
             return _serve_shell_unavailable(handler, exc)
@@ -3934,6 +3946,12 @@ def handle_get(handler, parsed) -> bool:
         except Exception:
             pass
         return j(handler, settings)
+
+    if parsed.path == "/api/menu-permissions":
+        from api.menu_permissions import resolve_menu_permissions_for_request
+
+        payload, headers = resolve_menu_permissions_for_request(handler, parsed)
+        return j(handler, payload, extra_headers=headers)
 
     if parsed.path == "/api/reasoning":
         # Current reasoning config (shared source of truth with the CLI —

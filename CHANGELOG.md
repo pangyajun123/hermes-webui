@@ -3,6 +3,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added optional entry-token menu permissions: when `HERMES_WEBUI_MENU_PERMISSIONS_URL` is configured, WebUI exchanges the incoming token for a normalized menu allow-list, hides unauthorized primary/sidebar Settings menus, and removes the token query parameter from the address bar.
+
 ## [v0.51.137] — 2026-05-25 — Release DI (stage-batch19 — 6-PR medium-risk batch)
 
 ### Added

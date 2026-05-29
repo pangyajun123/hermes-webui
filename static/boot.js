@@ -369,10 +369,14 @@ function expandSidebar(){
     if(typeof _applyTabVisibility==='function'&&typeof _getHiddenTabs==='function'){
       _applyTabVisibility(_getHiddenTabs());
     }
+    if(typeof _applyMenuPermissions==='function'){
+      _applyMenuPermissions();
+    }
     var active=document.querySelector('.rail .rail-btn.nav-tab.active[data-panel]')
                ||document.querySelector('.sidebar-nav .nav-tab.active[data-panel]');
-    if(active&&active.classList.contains('nav-tab-hidden')){
-      var chatBtn=document.querySelector('.rail .rail-btn.nav-tab[data-panel="chat"]');
+    if(active&&(active.classList.contains('nav-tab-hidden')||active.classList.contains('nav-tab-permission-hidden'))){
+      var chatBtn=document.querySelector('.rail .rail-btn.nav-tab[data-panel="chat"]:not(.nav-tab-permission-hidden)')
+               ||document.querySelector('.rail .rail-btn.nav-tab[data-panel]:not(.nav-tab-permission-hidden)');
       if(chatBtn)chatBtn.classList.add('active');
       if(active)active.classList.remove('active');
     }

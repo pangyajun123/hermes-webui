@@ -280,6 +280,8 @@ Full list of environment variables:
 | `HERMES_WEBUI_DEFAULT_MODEL` | *(provider default)* | Optional model override; leave unset to use the active Hermes provider default |
 | `HERMES_WEBUI_PASSWORD` | *(unset)* | Set to enable password authentication |
 | `HERMES_WEBUI_CSP_CONNECT_EXTRA` | *(unset)* | Optional space-separated `http(s)://` or `ws(s)://` origins to append to the report-only CSP `connect-src` directive for reverse-proxy or tunnel deployments |
+| `HERMES_WEBUI_MENU_PERMISSIONS_URL` | *(unset)* | Optional third-party endpoint for entry-token menu permissions. When set, WebUI reads `?token=...` (configurable with `HERMES_WEBUI_MENU_TOKEN_PARAM`), calls the endpoint, filters primary/sidebar Settings menus from the returned allow-list, and removes the token query parameter from the address bar. |
+| `HERMES_WEBUI_MENU_PERMISSIONS_METHOD` | `GET` | `GET` or `POST` for the menu-permissions endpoint. By default WebUI sends `Authorization: Bearer <token>`; override the outbound header/query/body names with `HERMES_WEBUI_MENU_PERMISSIONS_HEADER`, `HERMES_WEBUI_MENU_PERMISSIONS_QUERY_PARAM`, or `HERMES_WEBUI_MENU_PERMISSIONS_BODY_FIELD`. |
 | `HERMES_WEBUI_EXTENSION_DIR` | *(unset)* | Optional local directory served at `/extensions/`; must point to an existing directory before extension injection is enabled |
 | `HERMES_WEBUI_EXTENSION_SCRIPT_URLS` | *(unset)* | Optional comma-separated same-origin script URLs to inject; see [WebUI Extensions](docs/EXTENSIONS.md) |
 | `HERMES_WEBUI_EXTENSION_STYLESHEET_URLS` | *(unset)* | Optional comma-separated same-origin stylesheet URLs to inject; see [WebUI Extensions](docs/EXTENSIONS.md) |
