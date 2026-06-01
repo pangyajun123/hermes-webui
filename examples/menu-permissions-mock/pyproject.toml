@@ -1,0 +1,10 @@
+[project]
+name = "hermes-menu-permissions-mock"
+version = "0.1.0"
+description = "Local mock API for Hermes WebUI menu permissions"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+hermes-menu-permissions-mock = "menu_permissions_mock.server:main"
+
