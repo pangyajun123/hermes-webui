@@ -246,6 +246,7 @@ For the deep dive on each of these, see [`docs/docker.md`](docs/docker.md).
 | State directory | `HERMES_WEBUI_STATE_DIR` env, then `$HERMES_HOME/webui` (Windows default `%LOCALAPPDATA%\hermes\webui`, POSIX default `~/.hermes/webui`) |
 | Default workspace | `HERMES_WEBUI_DEFAULT_WORKSPACE` env, then `~/workspace`, then state dir |
 | Port | `HERMES_WEBUI_PORT` env or first argument, default `8787` |
+| Menu permissions endpoint | `HERMES_WEBUI_MENU_PERMISSIONS_URL` env or second argument after the port |
 
 If discovery finds everything, nothing else is required.
 
@@ -267,6 +268,15 @@ Or inline:
 HERMES_WEBUI_AGENT_DIR=/custom/path ./start.sh 9000
 ```
 
+For hosted entry-token menu permissions, the second positional argument is a
+shorthand for `HERMES_WEBUI_MENU_PERMISSIONS_URL`:
+
+```bash
+HERMES_WEBUI_MENU_PERMISSIONS_METHOD=GET \
+HERMES_WEBUI_MENU_PERMISSIONS_HEADER=X-Access-Token \
+./start.sh 8789 http://127.0.0.1:8791/api/hermes/menu-permissions
+```
+
 Full list of environment variables:
 
 | Variable | Default | Description |
@@ -280,8 +290,10 @@ Full list of environment variables:
 | `HERMES_WEBUI_DEFAULT_MODEL` | *(provider default)* | Optional model override; leave unset to use the active Hermes provider default |
 | `HERMES_WEBUI_PASSWORD` | *(unset)* | Set to enable password authentication |
 | `HERMES_WEBUI_CSP_CONNECT_EXTRA` | *(unset)* | Optional space-separated `http(s)://` or `ws(s)://` origins to append to the report-only CSP `connect-src` directive for reverse-proxy or tunnel deployments |
-| `HERMES_WEBUI_MENU_PERMISSIONS_URL` | *(unset)* | Optional third-party endpoint for entry-token menu permissions. When set, WebUI reads `?token=...` (configurable with `HERMES_WEBUI_MENU_TOKEN_PARAM`), calls the endpoint, filters primary/sidebar Settings menus from the returned allow-list, and removes the token query parameter from the address bar. |
+| `HERMES_WEBUI_MENU_PERMISSIONS_URL` | *(unset)* | Optional third-party endpoint for entry-token menu permissions. When set, WebUI reads `?token=...` (configurable with `HERMES_WEBUI_MENU_TOKEN_PARAM`), stores the entry token in a signed HttpOnly cookie, calls the endpoint, filters primary/sidebar Settings menus from the returned allow-list, and removes the token query parameter from the address bar. Root visits without an incoming or saved entry token redirect to `HERMES_WEBUI_ENTRY_LOGIN_URL`. Logout clears the saved entry token. This must be the permissions API URL, not the external login/launcher page. |
 | `HERMES_WEBUI_MENU_PERMISSIONS_METHOD` | `GET` | `GET` or `POST` for the menu-permissions endpoint. By default WebUI sends `Authorization: Bearer <token>`; override the outbound header/query/body names with `HERMES_WEBUI_MENU_PERMISSIONS_HEADER`, `HERMES_WEBUI_MENU_PERMISSIONS_QUERY_PARAM`, or `HERMES_WEBUI_MENU_PERMISSIONS_BODY_FIELD`. |
+| `HERMES_WEBUI_ENTRY_LOGIN_URL` | `http://127.0.0.1:3100/webui-hermes` | External login/launcher URL used when menu permissions are enabled and `/` or `/index.html` is opened without an incoming or saved entry token. |
+| `HERMES_WEBUI_ENTRY_TOKEN_REQUIRED` | `1` when menu permissions are enabled | Set to `0`/`false` to keep the old fail-closed shell behavior instead of redirecting root visits with no entry token. |
 | `HERMES_WEBUI_EXTENSION_DIR` | *(unset)* | Optional local directory served at `/extensions/`; must point to an existing directory before extension injection is enabled |
 | `HERMES_WEBUI_EXTENSION_SCRIPT_URLS` | *(unset)* | Optional comma-separated same-origin script URLs to inject; see [WebUI Extensions](docs/EXTENSIONS.md) |
 | `HERMES_WEBUI_EXTENSION_STYLESHEET_URLS` | *(unset)* | Optional comma-separated same-origin stylesheet URLs to inject; see [WebUI Extensions](docs/EXTENSIONS.md) |

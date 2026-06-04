@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import venv
 import webbrowser
@@ -301,6 +302,15 @@ def open_browser(url: str) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bootstrap Hermes Web UI onboarding.")
     parser.add_argument("port", nargs="?", type=int, default=DEFAULT_PORT)
+    parser.add_argument(
+        "menu_permissions_url",
+        nargs="?",
+        help=(
+            "Optional shorthand for HERMES_WEBUI_MENU_PERMISSIONS_URL. "
+            "Use this for hosted launchers that start WebUI as "
+            "`./start.sh <port> <menu-permissions-url>`."
+        ),
+    )
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument(
         "--no-browser",
@@ -324,6 +334,23 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     return parser.parse_args()
+
+
+def _menu_permissions_url_from_arg(raw: str | None) -> str | None:
+    """Validate the optional launcher shorthand for the menu permissions URL."""
+    if raw is None:
+        return None
+    value = raw.strip()
+    if not value:
+        return None
+    if "\r" in value or "\n" in value:
+        raise RuntimeError("Menu permissions URL argument must not contain newlines.")
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise RuntimeError(
+            "Menu permissions URL argument must be an absolute http(s) URL."
+        )
+    return value
 
 
 # Env vars whose presence indicates this process was launched by a supervisor
@@ -392,6 +419,10 @@ def _detect_supervisor() -> str | None:
 def main() -> int:
     args = parse_args()
     ensure_supported_platform()
+    menu_permissions_url = _menu_permissions_url_from_arg(args.menu_permissions_url)
+    if menu_permissions_url:
+        os.environ["HERMES_WEBUI_MENU_PERMISSIONS_URL"] = menu_permissions_url
+        info("Using menu permissions URL from launcher argument")
 
     agent_dir = discover_agent_dir()
     if not agent_dir and not hermes_command_exists():
