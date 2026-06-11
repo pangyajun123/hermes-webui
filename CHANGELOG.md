@@ -5,7 +5,12 @@
 
 ### Added
 
-- Added optional entry-token menu permissions: when `HERMES_WEBUI_MENU_PERMISSIONS_URL` is configured, WebUI exchanges the incoming token for a normalized menu allow-list, hides unauthorized primary/sidebar Settings menus, and removes the token query parameter from the address bar.
+- Added optional entry-token menu permissions: when `HERMES_WEBUI_MENU_PERMISSIONS_URL` is configured, WebUI exchanges the incoming token for a normalized menu allow-list, stores the entry token in a signed HttpOnly cookie, hides unauthorized primary/sidebar Settings menus, removes the token query parameter from the address bar, redirects root visits without an incoming or saved token to `HERMES_WEBUI_ENTRY_LOGIN_URL` (default `http://127.0.0.1:3100/webui-hermes`), and clears the saved entry token on logout.
+- Added `./start.sh <port> <menu-permissions-url>` as a launcher shorthand for `HERMES_WEBUI_MENU_PERMISSIONS_URL`.
+
+### Fixed
+
+- Saved entry-token menu permissions now re-resolve from the saved token before trusting the cached allow-list cookie, so returning through the launcher cannot keep stale menu permissions from an older token.
 
 ## [v0.51.137] — 2026-05-25 — Release DI (stage-batch19 — 6-PR medium-risk batch)
 

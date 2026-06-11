@@ -2,8 +2,9 @@
 
 When configured, WebUI accepts an entry token from the shell URL or request
 headers, exchanges it with an administrator-owned permission endpoint, and
-returns a normalized menu allow-list to the browser. The raw token never leaves
-the request/remote-call path and is not persisted.
+returns a normalized menu allow-list to the browser. The raw entry token is
+persisted only as a signed HttpOnly cookie so the root shell can recognize a
+previous entry and clear it on logout without exposing it to ordinary JS.
 """
 
 from __future__ import annotations
@@ -50,6 +51,8 @@ SETTINGS_SECTION_IDS = (
 )
 
 _COOKIE_NAME = "hermes_menu_permissions"
+_ENTRY_TOKEN_COOKIE_NAME = "hermes_entry_token"
+_DEFAULT_ENTRY_LOGIN_REDIRECT_URL = "http://127.0.0.1:3100/webui-hermes"
 _CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _CACHE_LOCK = threading.Lock()
 
@@ -137,6 +140,25 @@ def is_menu_permissions_enabled() -> bool:
     return bool(os.getenv("HERMES_WEBUI_MENU_PERMISSIONS_URL", "").strip())
 
 
+def is_entry_token_required() -> bool:
+    """Return True when the root shell must arrive with a saved entry token."""
+    if not is_menu_permissions_enabled():
+        return False
+    raw = os.getenv("HERMES_WEBUI_ENTRY_TOKEN_REQUIRED", "").strip()
+    if raw:
+        return raw.lower() in {"1", "true", "yes", "on"}
+    return True
+
+
+def entry_login_redirect_url() -> str:
+    """Resolve the external login URL used when the root shell lacks a token."""
+    raw = os.getenv("HERMES_WEBUI_ENTRY_LOGIN_URL", "").strip()
+    value = raw or _DEFAULT_ENTRY_LOGIN_REDIRECT_URL
+    if "\r" in value or "\n" in value:
+        return _DEFAULT_ENTRY_LOGIN_REDIRECT_URL
+    return value
+
+
 def _all_permissions_payload(*, enabled: bool, source: str) -> dict[str, Any]:
     return _build_payload(PRIMARY_PANEL_IDS, SETTINGS_SECTION_IDS, enabled=enabled, source=source)
 
@@ -191,7 +213,7 @@ def _token_candidates_from_query(parsed) -> list[str]:
     return values
 
 
-def _token_from_request(handler, parsed) -> str | None:
+def _token_from_request_sources(handler, parsed) -> str | None:
     for value in _token_candidates_from_query(parsed):
         return value
     headers = getattr(handler, "headers", None)
@@ -207,6 +229,74 @@ def _token_from_request(handler, parsed) -> str | None:
             if token:
                 return token
     return None
+
+
+def _entry_token_cookie_ttl() -> int:
+    return _int_env("HERMES_WEBUI_ENTRY_TOKEN_COOKIE_TTL", 86400 * 30, 60, 86400 * 365)
+
+
+def _entry_token_cookie_value(token: str) -> str:
+    stored = {"token": token, "created_at": int(time.time())}
+    raw = json.dumps(stored, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    b64 = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    sig = hmac.new(_signing_key(), b64.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{b64}.{sig}"
+
+
+def _entry_token_from_cookie_value(value: str) -> str | None:
+    if not value or "." not in value:
+        return None
+    b64, sig = value.rsplit(".", 1)
+    expected = hmac.new(_signing_key(), b64.encode("ascii"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return None
+    padded = b64 + ("=" * (-len(b64) % 4))
+    try:
+        stored = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    except Exception:
+        return None
+    created_at = int(stored.get("created_at") or 0)
+    token = stored.get("token")
+    if created_at <= 0 or time.time() - created_at > _entry_token_cookie_ttl():
+        return None
+    if not isinstance(token, str) or not token.strip():
+        return None
+    return token.strip()
+
+
+def _entry_token_cookie(handler) -> str | None:
+    cookie_header = getattr(handler, "headers", {}).get("Cookie", "")
+    if not cookie_header:
+        return None
+    cookie = http.cookies.SimpleCookie()
+    try:
+        cookie.load(cookie_header)
+    except http.cookies.CookieError:
+        return None
+    morsel = cookie.get(_ENTRY_TOKEN_COOKIE_NAME)
+    return morsel.value if morsel else None
+
+
+def _saved_entry_token(handler) -> str | None:
+    return _entry_token_from_cookie_value(_entry_token_cookie(handler) or "")
+
+
+def _token_from_request(handler, parsed) -> str | None:
+    return _token_from_request_sources(handler, parsed) or _saved_entry_token(handler)
+
+
+def has_entry_token_for_request(handler, parsed) -> bool:
+    return bool(_token_from_request(handler, parsed))
+
+
+def missing_entry_token_redirect_url(handler, parsed) -> str | None:
+    if not is_entry_token_required():
+        return None
+    if getattr(parsed, "path", "") not in {"/", "/index.html"}:
+        return None
+    if has_entry_token_for_request(handler, parsed):
+        return None
+    return entry_login_redirect_url()
 
 
 def _split_token(raw: str) -> tuple[str, ...]:
@@ -295,9 +385,9 @@ def _request_remote_permissions(token: str) -> Any:
     headers = {"Accept": "application/json"}
     token_header = os.getenv("HERMES_WEBUI_MENU_PERMISSIONS_HEADER", "Authorization").strip()
     if token_header:
-        prefix = os.getenv("HERMES_WEBUI_MENU_PERMISSIONS_HEADER_PREFIX", "Bearer ")
+        default_prefix = "Bearer " if token_header.lower() == "authorization" else ""
+        prefix = os.getenv("HERMES_WEBUI_MENU_PERMISSIONS_HEADER_PREFIX", default_prefix)
         headers[token_header] = f"{prefix}{token}"
-
     data = None
     url = endpoint
     if method == "GET":
@@ -417,6 +507,23 @@ def _set_cookie_header(handler, payload: dict[str, Any]) -> str:
     return cookie[_COOKIE_NAME].OutputString()
 
 
+def _set_entry_token_cookie_header(handler, token: str) -> str:
+    cookie = http.cookies.SimpleCookie()
+    cookie[_ENTRY_TOKEN_COOKIE_NAME] = _entry_token_cookie_value(token)
+    cookie[_ENTRY_TOKEN_COOKIE_NAME]["httponly"] = True
+    cookie[_ENTRY_TOKEN_COOKIE_NAME]["samesite"] = "Lax"
+    cookie[_ENTRY_TOKEN_COOKIE_NAME]["path"] = "/"
+    cookie[_ENTRY_TOKEN_COOKIE_NAME]["max-age"] = str(_entry_token_cookie_ttl())
+    try:
+        from api.auth import _is_secure_context
+
+        if _is_secure_context(handler):
+            cookie[_ENTRY_TOKEN_COOKIE_NAME]["secure"] = True
+    except Exception:
+        pass
+    return cookie[_ENTRY_TOKEN_COOKIE_NAME].OutputString()
+
+
 def _clear_cookie_header() -> str:
     cookie = http.cookies.SimpleCookie()
     cookie[_COOKIE_NAME] = ""
@@ -426,23 +533,59 @@ def _clear_cookie_header() -> str:
     return cookie[_COOKIE_NAME].OutputString()
 
 
-def resolve_menu_permissions_for_request(handler, parsed) -> tuple[dict[str, Any], dict[str, str]]:
+def _clear_entry_token_cookie_header() -> str:
+    cookie = http.cookies.SimpleCookie()
+    cookie[_ENTRY_TOKEN_COOKIE_NAME] = ""
+    cookie[_ENTRY_TOKEN_COOKIE_NAME]["httponly"] = True
+    cookie[_ENTRY_TOKEN_COOKIE_NAME]["path"] = "/"
+    cookie[_ENTRY_TOKEN_COOKIE_NAME]["max-age"] = "0"
+    return cookie[_ENTRY_TOKEN_COOKIE_NAME].OutputString()
+
+
+def clear_entry_token_cookie_headers() -> list[str]:
+    """Return Set-Cookie values that clear entry-token derived state."""
+    return [_clear_cookie_header(), _clear_entry_token_cookie_header()]
+
+
+def resolve_menu_permissions_for_request(handler, parsed) -> tuple[dict[str, Any], dict[str, str | list[str]]]:
     """Return normalized menu permissions plus response headers to persist them."""
     if not is_menu_permissions_enabled():
         return _all_permissions_payload(enabled=False, source="disabled"), {}
 
-    token = _token_from_request(handler, parsed)
-    if token:
+    incoming_token = _token_from_request_sources(handler, parsed)
+    if incoming_token:
         try:
-            payload = _fetch_remote_permissions(token)
-            return payload, {"Set-Cookie": _set_cookie_header(handler, payload)}
+            payload = _fetch_remote_permissions(incoming_token)
+            return payload, {
+                "Set-Cookie": [
+                    _set_cookie_header(handler, payload),
+                    _set_entry_token_cookie_header(handler, incoming_token),
+                ]
+            }
         except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
             logger.warning("Menu permission lookup failed: %s", exc)
             message = "Menu permissions unavailable"
             if _env_bool("HERMES_WEBUI_MENU_PERMISSIONS_FAIL_OPEN", False):
                 payload = _all_permissions_payload(enabled=True, source="error-fail-open")
                 return payload, {"Set-Cookie": _set_cookie_header(handler, payload)}
-            return _fail_closed_payload("error", message), {"Set-Cookie": _clear_cookie_header()}
+            return _fail_closed_payload("error", message), {"Set-Cookie": clear_entry_token_cookie_headers()}
+
+    token = _saved_entry_token(handler)
+    if token:
+        try:
+            payload = _fetch_remote_permissions(token)
+            return payload, {
+                "Set-Cookie": [
+                    _set_cookie_header(handler, payload),
+                    _set_entry_token_cookie_header(handler, token),
+                ]
+            }
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            logger.warning("Menu permission lookup with saved entry token failed: %s", exc)
+            if not _env_bool("HERMES_WEBUI_MENU_PERMISSIONS_FAIL_OPEN", False):
+                return _fail_closed_payload("error", "Menu permissions unavailable"), {
+                    "Set-Cookie": clear_entry_token_cookie_headers()
+                }
 
     cookie_payload = _payload_from_cookie_value(_permission_cookie(handler) or "")
     if cookie_payload:
@@ -452,5 +595,5 @@ def resolve_menu_permissions_for_request(handler, parsed) -> tuple[dict[str, Any
         payload = _all_permissions_payload(enabled=True, source="missing-token-fail-open")
         return payload, {"Set-Cookie": _set_cookie_header(handler, payload)}
     return _fail_closed_payload("missing-token", "Menu permission token is missing"), {
-        "Set-Cookie": _clear_cookie_header()
+        "Set-Cookie": clear_entry_token_cookie_headers()
     }
