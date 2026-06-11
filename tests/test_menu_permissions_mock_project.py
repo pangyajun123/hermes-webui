@@ -48,10 +48,10 @@ def test_mock_supports_limited_token_for_visible_menu_filtering():
         from api.menu_permissions import normalize_menu_permissions
 
         payload = build_permissions_payload("limited-token")
-        assert payload["data"]["permissions"] == ["chat", "tasks", "settings.system", "settings.providers"]
+        assert payload["data"]["permissions"] == ["chat", "tasks", "settings.providers"]
         normalized = normalize_menu_permissions(payload)
         assert normalized["allowed_panels"] == ["chat", "tasks", "settings"]
-        assert normalized["allowed_settings_sections"] == ["providers", "system"]
+        assert normalized["allowed_settings_sections"] == ["providers"]
     finally:
         try:
             sys.path.remove(str(MOCK_ROOT))

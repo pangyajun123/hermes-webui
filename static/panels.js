@@ -6336,7 +6336,7 @@ async function loadSettingsPanel(){
     // Show auth buttons only when auth is active
     try{
       const authStatus=await api('/api/auth/status');
-      _setSettingsAuthButtonsVisible(authStatus);
+      _setSettingsAuthButtonsVisible(!!authStatus.auth_enabled);
       _syncPasswordlessButton(authStatus);
     }catch(e){}
     loadPasskeys();
@@ -7002,15 +7002,12 @@ async function _refreshProviderModels(providerId, btn){
 
 let _settingsPasswordEnvLocked=false;
 function _setSettingsAuthButtonsVisible(active){
-  const status=(active&&typeof active==='object')?active:null;
-  const authActive=status?!!status.auth_enabled:!!active;
-  const signOutActive=status?!!(status.auth_enabled||status.entry_token_logged_in):authActive;
   const signOutBtn=$('btnSignOut');
-  if(signOutBtn) signOutBtn.style.display=signOutActive?'':'none';
+  if(signOutBtn) signOutBtn.style.display=active?'':'none';
   const disableBtn=$('btnDisableAuth');
-  if(disableBtn) disableBtn.style.display=authActive?'':'none';
+  if(disableBtn) disableBtn.style.display=active?'':'none';
   const passkeyBtn=$('btnRegisterPasskey');
-  if(passkeyBtn) passkeyBtn.disabled=!authActive||!window.PublicKeyCredential||!navigator.credentials;
+  if(passkeyBtn) passkeyBtn.disabled=!active||!window.PublicKeyCredential||!navigator.credentials;
 }
 function _syncPasswordlessButton(authStatus){
   const btn=$('btnGoPasswordless');
@@ -7514,7 +7511,7 @@ async function saveSettings(andClose){
 async function signOut(){
   try{
     await api('/api/auth/logout',{method:'POST',body:'{}'});
-    window.location.href='/';
+    window.location.href='login';
   }catch(e){
     showToast(t('sign_out_failed')+e.message);
   }

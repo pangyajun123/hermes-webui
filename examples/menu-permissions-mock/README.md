@@ -47,15 +47,6 @@ HERMES_WEBUI_MENU_PERMISSIONS_BODY_FIELD=token \
 ./start.sh
 ```
 
-等价的启动简写是把权限接口作为端口后的第二个参数传入：
-
-```bash
-HERMES_WEBUI_MENU_PERMISSIONS_METHOD=POST \
-HERMES_WEBUI_MENU_TOKEN_PARAM=token \
-HERMES_WEBUI_MENU_PERMISSIONS_BODY_FIELD=token \
-./start.sh 8787 http://127.0.0.1:8791/api/hermes/menu-permissions
-```
-
 然后用带入口 token 的地址打开 WebUI：
 
 ```text
@@ -65,7 +56,7 @@ http://127.0.0.1:8787/?token=demo-token
 服务默认要求 token 非空。内置两个演示 token：
 
 - `demo-token`：返回完整菜单权限。
-- `limited-token`：只返回 `chat`、`tasks`、`settings.system`、`settings.providers`，用于验证菜单隐藏效果并保留系统设置里的退出入口。
+- `limited-token`：只返回 `chat`、`tasks`、`settings.providers`，用于验证菜单隐藏效果。
 
 其他任意非空 token 默认返回完整菜单权限。
 如需临时允许无 token 调试：

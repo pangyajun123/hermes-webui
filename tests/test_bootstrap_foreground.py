@@ -92,7 +92,6 @@ def clean_env(monkeypatch):
         "HERMES_WEBUI_HOST",
         "HERMES_WEBUI_PORT",
         "HERMES_WEBUI_AGENT_DIR",
-        "HERMES_WEBUI_MENU_PERMISSIONS_URL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -134,19 +133,6 @@ class TestForegroundFlag:
         assert "launchd" in out
         assert "systemd" in out
         assert "supervisord" in out
-
-    def test_menu_permissions_url_shorthand_after_port(self, import_bootstrap, monkeypatch):
-        url = "http://127.0.0.1:8791/api/hermes/menu-permissions"
-        monkeypatch.setattr(sys, "argv", ["bootstrap.py", "8789", url])
-
-        args = import_bootstrap.parse_args()
-
-        assert args.port == 8789
-        assert args.menu_permissions_url == url
-
-    def test_menu_permissions_url_shorthand_requires_http_url(self, import_bootstrap):
-        with pytest.raises(RuntimeError):
-            import_bootstrap._menu_permissions_url_from_arg("not-a-url")
 
 
 # ---------- _detect_supervisor() ------------------------------------------
@@ -412,22 +398,6 @@ class TestForegroundEnvAndCwd:
         assert os.environ["HERMES_WEBUI_AGENT_DIR"] == str(agent_dir)
         # state-dir was already set by the fixture; verify it survived.
         assert "HERMES_WEBUI_STATE_DIR" in os.environ
-
-    def test_menu_permissions_url_arg_overrides_env_for_child(self, setup, monkeypatch, clean_env):
-        bs, _ = setup
-        url = "http://127.0.0.1:8791/api/hermes/menu-permissions"
-        monkeypatch.setenv("HERMES_WEBUI_MENU_PERMISSIONS_URL", "http://127.0.0.1:3100/webui-hermes")
-        monkeypatch.setattr(sys, "argv", ["bootstrap.py", "--foreground", "8789", url])
-        monkeypatch.setattr(os, "chdir", lambda p: None)
-
-        def fake_execv(*a):
-            raise SystemExit(0)
-        monkeypatch.setattr(os, "execv", fake_execv)
-
-        with pytest.raises(SystemExit):
-            bs.main()
-
-        assert os.environ["HERMES_WEBUI_MENU_PERMISSIONS_URL"] == url
 
     def test_foreground_does_not_call_wait_for_health(self, setup, monkeypatch, clean_env):
         bs, _ = setup

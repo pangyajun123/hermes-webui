@@ -203,7 +203,7 @@ MENU_ITEMS: list[dict[str, Any]] = [
 ]
 
 PERMISSION_CODES = [item["code"] for item in MENU_ITEMS]
-LIMITED_PERMISSION_CODES = ["chat", "tasks", "settings.system", "settings.providers"]
+LIMITED_PERMISSION_CODES = ["chat", "tasks", "settings.providers"]
 
 
 def _env_bool(name: str, default: bool) -> bool:

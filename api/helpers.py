@@ -88,9 +88,7 @@ def j(handler, payload, status: int=200, extra_headers: dict=None) -> None:
     _security_headers(handler)
     if extra_headers:
         for k, v in extra_headers.items():
-            values = v if isinstance(v, (list, tuple)) else (v,)
-            for value in values:
-                handler.send_header(k, value)
+            handler.send_header(k, v)
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -105,9 +103,7 @@ def t(handler, payload, status: int=200, content_type: str='text/plain; charset=
     _security_headers(handler)
     if extra_headers:
         for k, v in extra_headers.items():
-            values = v if isinstance(v, (list, tuple)) else (v,)
-            for value in values:
-                handler.send_header(k, value)
+            handler.send_header(k, v)
     handler.end_headers()
     handler.wfile.write(body)
 

@@ -3714,21 +3714,6 @@ def handle_get(handler, parsed) -> bool:
 
     if parsed.path in ("/", "/index.html") or parsed.path.startswith("/session/"):
         try:
-            try:
-                from api.menu_permissions import missing_entry_token_redirect_url
-
-                redirect_url = missing_entry_token_redirect_url(handler, parsed)
-            except Exception as exc:
-                logger.warning("Failed to inspect entry token for shell: %s", exc)
-                redirect_url = None
-            if redirect_url:
-                handler.send_response(302)
-                handler.send_header("Location", redirect_url)
-                handler.send_header("Content-Length", "0")
-                _security_headers(handler)
-                handler.end_headers()
-                return True
-
             from urllib.parse import quote
             from api.updates import WEBUI_VERSION
             version_token = quote(WEBUI_VERSION, safe="")
@@ -3801,7 +3786,6 @@ def handle_get(handler, parsed) -> bool:
 
     if parsed.path == "/api/auth/status":
         from api.auth import _passkey_feature_flag_enabled, get_password_hash, is_auth_enabled, parse_cookie, verify_session
-        from api.menu_permissions import has_entry_token_for_request, is_entry_token_required
         from api.passkeys import registered_credentials
 
         logged_in = False
@@ -3820,8 +3804,6 @@ def handle_get(handler, parsed) -> bool:
             "passkeys_enabled": bool(passkeys),
             "passkeys_count": len(passkeys),
             "passkey_feature_flag": passkey_flag,
-            "entry_token_auth_enabled": is_entry_token_required(),
-            "entry_token_logged_in": has_entry_token_for_request(handler, parsed),
         })
 
     if parsed.path in ("/manifest.json", "/manifest.webmanifest"):
@@ -6610,7 +6592,6 @@ def handle_post(handler, parsed) -> bool:
 
     if parsed.path == "/api/auth/logout":
         from api.auth import clear_auth_cookie, invalidate_session, parse_cookie
-        from api.menu_permissions import clear_entry_token_cookie_headers
 
         cookie_val = parse_cookie(handler)
         if cookie_val:
@@ -6622,8 +6603,6 @@ def handle_post(handler, parsed) -> bool:
         handler.send_header("Cache-Control", "no-store")
         _security_headers(handler)
         clear_auth_cookie(handler)
-        for cookie_header in clear_entry_token_cookie_headers():
-            handler.send_header("Set-Cookie", cookie_header)
         handler.end_headers()
         handler.wfile.write(body)
         return True

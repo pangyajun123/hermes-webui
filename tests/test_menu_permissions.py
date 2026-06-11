@@ -70,155 +70,16 @@ def test_query_token_fetches_remote_permissions_without_echoing_token(monkeypatc
 
     monkeypatch.setattr(menu_permissions, "_fetch_remote_permissions", fake_fetch)
     monkeypatch.setattr(menu_permissions, "_set_cookie_header", lambda _handler, _payload: "hermes_menu_permissions=fake")
-    monkeypatch.setattr(menu_permissions, "_set_entry_token_cookie_header", lambda _handler, _token: "hermes_entry_token=fake")
 
     payload, headers = menu_permissions.resolve_menu_permissions_for_request(
         SimpleNamespace(headers={}),
         SimpleNamespace(query="token=secret-entry-token"),
     )
 
-    assert headers["Set-Cookie"] == ["hermes_menu_permissions=fake", "hermes_entry_token=fake"]
+    assert headers["Set-Cookie"] == "hermes_menu_permissions=fake"
     assert payload["allowed_panels"] == ["chat", "settings"]
     assert payload["allowed_settings_sections"] == ["system"]
     assert "secret-entry-token" not in json.dumps(payload)
-
-
-def test_entry_token_gate_redirects_root_when_missing(monkeypatch):
-    import api.menu_permissions as menu_permissions
-
-    monkeypatch.setenv("HERMES_WEBUI_MENU_PERMISSIONS_URL", "https://example.test/menus")
-
-    handler = SimpleNamespace(headers={})
-    assert menu_permissions.missing_entry_token_redirect_url(
-        handler,
-        SimpleNamespace(path="/", query=""),
-    ) == "http://127.0.0.1:3100/webui-hermes"
-    assert menu_permissions.missing_entry_token_redirect_url(
-        handler,
-        SimpleNamespace(path="/session/abc123", query=""),
-    ) is None
-
-
-def test_entry_token_cookie_satisfies_root_gate_and_rehydrates_permissions(monkeypatch):
-    import api.menu_permissions as menu_permissions
-
-    monkeypatch.setenv("HERMES_WEBUI_MENU_PERMISSIONS_URL", "https://example.test/menus")
-    monkeypatch.setenv("HERMES_WEBUI_MENU_PERMISSIONS_CACHE_TTL", "0")
-    seen = []
-
-    def fake_fetch(token):
-        seen.append(token)
-        return menu_permissions.normalize_menu_permissions(["chat", "settings.system"])
-
-    monkeypatch.setattr(menu_permissions, "_fetch_remote_permissions", fake_fetch)
-
-    first_payload, first_headers = menu_permissions.resolve_menu_permissions_for_request(
-        SimpleNamespace(headers={}),
-        SimpleNamespace(path="/", query="token=secret-entry-token"),
-    )
-    assert first_payload["allowed_settings_sections"] == ["system"]
-    set_cookies = first_headers["Set-Cookie"]
-    entry_cookie = next(value for value in set_cookies if value.startswith("hermes_entry_token="))
-    entry_pair = entry_cookie.split(";", 1)[0]
-    handler = SimpleNamespace(headers={"Cookie": entry_pair})
-
-    assert menu_permissions.missing_entry_token_redirect_url(
-        handler,
-        SimpleNamespace(path="/", query=""),
-    ) is None
-    second_payload, second_headers = menu_permissions.resolve_menu_permissions_for_request(
-        handler,
-        SimpleNamespace(path="/", query=""),
-    )
-
-    assert seen == ["secret-entry-token", "secret-entry-token"]
-    assert second_payload["allowed_panels"] == ["chat", "settings"]
-    assert any(value.startswith("hermes_menu_permissions=") for value in second_headers["Set-Cookie"])
-
-
-def test_saved_entry_token_takes_precedence_over_permission_cookie(monkeypatch):
-    import api.menu_permissions as menu_permissions
-
-    monkeypatch.setenv("HERMES_WEBUI_MENU_PERMISSIONS_URL", "https://example.test/menus")
-    monkeypatch.setenv("HERMES_WEBUI_MENU_PERMISSIONS_CACHE_TTL", "0")
-    seen = []
-
-    def fake_fetch(token):
-        seen.append(token)
-        if len(seen) == 1:
-            return menu_permissions.normalize_menu_permissions(["chat", "settings.system"])
-        return menu_permissions.normalize_menu_permissions(["chat", "tasks", "settings.providers"])
-
-    monkeypatch.setattr(menu_permissions, "_fetch_remote_permissions", fake_fetch)
-
-    first_payload, first_headers = menu_permissions.resolve_menu_permissions_for_request(
-        SimpleNamespace(headers={}),
-        SimpleNamespace(path="/", query="token=secret-entry-token"),
-    )
-    assert first_payload["allowed_settings_sections"] == ["system"]
-
-    cookie_pairs = []
-    for set_cookie in first_headers["Set-Cookie"]:
-        cookie_pairs.append(set_cookie.split(";", 1)[0])
-    handler = SimpleNamespace(headers={"Cookie": "; ".join(cookie_pairs)})
-
-    second_payload, second_headers = menu_permissions.resolve_menu_permissions_for_request(
-        handler,
-        SimpleNamespace(path="/", query=""),
-    )
-
-    assert seen == ["secret-entry-token", "secret-entry-token"]
-    assert second_payload["source"] == "remote"
-    assert second_payload["allowed_panels"] == ["chat", "tasks", "settings"]
-    assert second_payload["allowed_settings_sections"] == ["providers"]
-    assert any(value.startswith("hermes_menu_permissions=") for value in second_headers["Set-Cookie"])
-
-
-def test_outbound_permission_request_allows_body_only_token(monkeypatch):
-    import api.menu_permissions as menu_permissions
-
-    captured = {}
-
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_exc):
-            return False
-
-        def read(self, _limit):
-            return b'{"permissions":["chat"]}'
-
-    def fake_urlopen(req, timeout):
-        captured["url"] = req.full_url
-        captured["headers"] = dict(req.header_items())
-        captured["body"] = req.data
-        captured["method"] = req.get_method()
-        captured["timeout"] = timeout
-        return FakeResponse()
-
-    monkeypatch.setenv("HERMES_WEBUI_MENU_PERMISSIONS_URL", "https://example.test/menus")
-    monkeypatch.setenv("HERMES_WEBUI_MENU_PERMISSIONS_METHOD", "POST")
-    monkeypatch.setenv("HERMES_WEBUI_MENU_PERMISSIONS_HEADER", "")
-    monkeypatch.setenv("HERMES_WEBUI_MENU_PERMISSIONS_BODY_FIELD", "token")
-    monkeypatch.setattr(menu_permissions.urllib.request, "urlopen", fake_urlopen)
-
-    payload = menu_permissions._request_remote_permissions("secret-entry-token")
-
-    assert payload == {"permissions": ["chat"]}
-    assert captured["method"] == "POST"
-    assert json.loads(captured["body"].decode("utf-8")) == {"token": "secret-entry-token"}
-    assert "" not in captured["headers"]
-    assert "Authorization" not in captured["headers"]
-
-
-def test_clear_entry_token_headers_clear_permission_and_entry_cookies():
-    from api.menu_permissions import clear_entry_token_cookie_headers
-
-    headers = clear_entry_token_cookie_headers()
-
-    assert any(value.startswith("hermes_menu_permissions=") and "Max-Age=0" in value for value in headers)
-    assert any(value.startswith("hermes_entry_token=") and "Max-Age=0" in value for value in headers)
 
 
 def test_static_menu_permission_wiring():
@@ -229,8 +90,6 @@ def test_static_menu_permission_wiring():
     assert "__MENU_TOKEN_PARAM_JSON__" in ROUTES_PY
     assert '"/api/menu-permissions"' in ROUTES_PY
     assert "resolve_menu_permissions_for_request" in ROUTES_PY
-    assert "missing_entry_token_redirect_url" in ROUTES_PY
-    assert "clear_entry_token_cookie_headers" in ROUTES_PY
 
     for symbol in (
         "_applyMenuPermissions",
